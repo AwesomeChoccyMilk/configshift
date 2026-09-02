@@ -1,0 +1,487 @@
+name: Bootstrap scaffold
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Create scaffold files and commit
+        run: |
+          set -e
+
+          # LICENSE
+          cat > LICENSE <<'EOF'
+MIT License
+
+Copyright (c) 2026 AwesomeChoccyMilk
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+EOF
+
+          # README
+          cat > README.md <<'EOF'
+# ConfigShift
+
+ConfigShift is an explainable, testable config migrator — convert service
+configs between runtimes (Docker Compose, systemd, Kubernetes, nginx, etc.) 
+and generate a safe migration plan with human-readable explanations.
+
+This repository is an initial Go scaffold for the project.
+
+Quickstart
+---------
+
+1. Install Go 1.20+ and clone this repo (or use the binary once published):
+
+   git clone https://github.com/AwesomeChoccyMilk/configshift.git
+   cd configshift
+
+2. Build the CLI:
+
+   go build ./cmd/configshift
+
+3. Run the stub convert command (example):
+
+   ./configshift convert --from compose --to k8s examples/compose/simple-app/docker-compose.yml -o out/
+
+What you get in this scaffold
+-----------------------------
+- Basic Cobra-based CLI (`configshift`) with `convert` stub
+- Placeholder parser and transform packages (compose -> k8s) with TODOs
+- Example docker-compose app under `examples/`
+- Beaver mascot assets under `assets/logo/`
+- CI workflow, CONTRIBUTING, issue templates, and docs
+
+Next steps
+----------
+Pick one:
+- Expand parser coverage (compose -> AST) and implement reliable transforms.
+- Add explainability annotations per-transformation.
+- Implement migration plan generator and test harness (kind/minikube).
+
+Contributing
+------------
+See CONTRIBUTING.md and CODE_OF_CONDUCT.md for how to help.
+EOF
+
+          # go.mod
+          cat > go.mod <<'EOF'
+module github.com/AwesomeChoccyMilk/configshift
+
+go 1.21
+
+require (
+    github.com/spf13/cobra v1.9.0
+    gopkg.in/yaml.v3 v3.0.1
+)
+EOF
+
+          # Directories
+          mkdir -p cmd/configshift pkg/parser pkg/transform examples/compose/simple-app .github/workflows docs .github/ISSUE_TEMPLATE assets/logo
+
+          # cmd/configshift/main.go
+          cat > cmd/configshift/main.go <<'EOF'
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/spf13/cobra"
+    "github.com/AwesomeChoccyMilk/configshift/pkg/transform"
+)
+
+var (
+    version = "0.1.0"
+)
+
+func main() {
+    rootCmd := &cobra.Command{
+        Use:   "configshift",
+        Short: "ConfigShift — explainable config transforms and safe migrations",
+    }
+
+    rootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose output")
+
+    // version
+    rootCmd.AddCommand(&cobra.Command{
+        Use:   "version",
+        Short: "Print version",
+        Run: func(cmd *cobra.Command, args []string) {
+            fmt.Println(version)
+        },
+    })
+
+    // convert
+    convertCmd := &cobra.Command{
+        Use:   "convert",
+        Short: "Convert configuration from one format to another",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            from, _ := cmd.Flags().GetString("from")
+            to, _ := cmd.Flags().GetString("to")
+            out, _ := cmd.Flags().GetString("out")
+            input := args[0]
+
+            fmt.Printf("Convert: %s -> %s (input=%s)\n", from, to, input)
+
+            // For now the CLI calls a stub transform function.
+            if from == "compose" && to == "k8s" {
+                manifests, err := transform.ComposeToK8s(input)
+                if err != nil {
+                    return err
+                }
+                // write output file(s)
+                if out == "" {
+                    out = "out"
+                }
+                os.MkdirAll(out, 0755)
+                fpath := out + "/generated-k8s.yaml"
+                if err := os.WriteFile(fpath, []byte(manifests), 0644); err != nil {
+                    return err
+                }
+                fmt.Printf("Wrote: %s\n", fpath)
+                return nil
+            }
+
+            return fmt.Errorf("conversion path %s -> %s not implemented", from, to)
+        },
+    }
+    convertCmd.Flags().String("from", "", "source format (compose|systemd|nginx)")
+    convertCmd.Flags().String("to", "", "target format (k8s|systemd|nginx)")
+    convertCmd.Flags().String("out", "", "output directory")
+    rootCmd.AddCommand(convertCmd)
+
+    if err := rootCmd.Execute(); err != nil {
+        fmt.Fprintln(os.Stderr, err)
+        os.Exit(1)
+    }
+}
+EOF
+
+          # pkg/parser/compose.go
+          cat > pkg/parser/compose.go <<'EOF'
+package parser
+
+import (
+    "io/ioutil"
+
+    "gopkg.in/yaml.v3"
+)
+
+// ComposeService is a tiny subset of docker-compose service fields used in the
+// scaffold. Extend this as needed.
+type ComposeService struct {
+    Image       string            `yaml:"image"`
+    Ports       []string          `yaml:"ports"`
+    Environment map[string]string `yaml:"environment"`
+}
+
+// ComposeFile represents a very small portion of a docker-compose.yml file.
+type ComposeFile struct {
+    Version  string                    `yaml:"version"`
+    Services map[string]ComposeService `yaml:"services"`
+}
+
+// ParseCompose reads a docker-compose YAML file and returns a ComposeFile
+// structure. This is intentionally small for the scaffold and should be
+// expanded in later iterations.
+func ParseCompose(path string) (*ComposeFile, error) {
+    b, err := ioutil.ReadFile(path)
+    if err != nil {
+        return nil, err
+    }
+    var cf ComposeFile
+    if err := yaml.Unmarshal(b, &cf); err != nil {
+        return nil, err
+    }
+    return &cf, nil
+}
+EOF
+
+          # pkg/transform/k8s.go
+          cat > pkg/transform/k8s.go <<'EOF'
+package transform
+
+import (
+    "fmt"
+    "strings"
+
+    "github.com/AwesomeChoccyMilk/configshift/pkg/parser"
+)
+
+// ComposeToK8s is a simple stub that converts a single-service compose file to
+// a basic Kubernetes Deployment + Service YAML. This is a minimal example to
+// get the scaffold running and should be replaced with a proper AST-based
+// transform and explainability annotations.
+func ComposeToK8s(composePath string) (string, error) {
+    cf, err := parser.ParseCompose(composePath)
+    if err != nil {
+        return "", err
+    }
+
+    var sb strings.Builder
+    for name, svc := range cf.Services {
+        // very basic Deployment
+        sb.WriteString(fmt.Sprintf("apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: %s-deployment\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: %s\n  template:\n    metadata:\n      labels:\n        app: %s\n    spec:\n      containers:\n      - name: %s\n        image: %s\n",
+            name, name, name, name, svc.Image))
+        // ports
+        if len(svc.Ports) > 0 {
+            sb.WriteString("        ports:\n")
+            for _, p := range svc.Ports {
+                parts := strings.Split(p, ":")
+                containerPort := parts[len(parts)-1]
+                sb.WriteString(fmt.Sprintf("        - containerPort: %s\n", containerPort))
+            }
+        }
+        // Service
+        sb.WriteString("---\n")
+        sb.WriteString(fmt.Sprintf("apiVersion: v1\nkind: Service\nmetadata:\n  name: %s-service\nspec:\n  selector:\n    app: %s\n  ports:\n",
+            name, name))
+        for _, p := range svc.Ports {
+            parts := strings.Split(p, ":")
+            port := parts[0]
+            target := parts[len(parts)-1]
+            sb.WriteString(fmt.Sprintf("  - port: %s\n    targetPort: %s\n", port, target))
+        }
+        // separator
+        sb.WriteString("---\n")
+    }
+
+    return sb.String(), nil
+}
+EOF
+
+          # example compose
+          cat > examples/compose/simple-app/docker-compose.yml <<'EOF'
+version: '3.8'
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=80
+EOF
+
+          # CI
+          cat > .github/workflows/ci.yml <<'EOF'
+name: Go CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./... -v
+EOF
+
+          # docs, roadmap, issue templates, contributing, code of conduct, gitignore
+          cat > docs/ARCHITECTURE.md <<'EOF'
+# Architecture
+
+This document outlines the high-level architecture for ConfigShift (scaffold
+edition).
+
+Core components (planned):
+- parser/ : Format parsers (docker-compose, systemd, nginx, etc.) — produce a
+  canonical intermediate AST.
+- transform/ : Rule-based transforms that convert AST nodes between runtimes.
+- explain/ : Attach human-readable rationale and risk-level annotations to
+  each transform.
+- plan/ : Migration plan generator that orders steps and produces rollback
+  instructions.
+- test/ : Test harness to generate and run smoke tests (local docker/kind).
+
+The current scaffold includes a minimal parser and a simple compose->k8s
+transform stub for development purposes.
+EOF
+
+          cat > docs/ROADMAP.md <<'EOF'
+# Roadmap
+
+Short-term (alpha)
+- Parser: docker-compose -> canonical AST
+- Transform: compose -> k8s (basic), with explanations attached as TODOs
+- CLI: `convert` and `plan` stubs
+- Example migrations and sample apps
+
+Medium-term (beta)
+- More parsers (systemd, nginx)
+- Test harness (local smoke tests)
+- Web UI for visual diffs & explanations
+
+Long-term (1.0)
+- Production-ready test runner (kind integration), signing and audit logs,
+  multi-target transforms, community contributions and playbooks.
+EOF
+
+          cat > .github/ISSUE_TEMPLATE/bug_report.md <<'EOF'
+name: Bug report
+about: Create a report to help us improve
+
+---
+
+**Describe the bug**
+A clear and concise description of what the bug is.
+
+**To Reproduce**
+Steps to reproduce the behavior:
+1. Go to '...'
+2. Run '...'
+
+**Expected behavior**
+A clear and concise description of what you expected to happen.
+
+**Screenshots**
+If applicable, add screenshots to help explain your problem.
+
+**Additional context**
+Add any other context about the problem here.
+EOF
+
+          cat > .github/ISSUE_TEMPLATE/feature_request.md <<'EOF'
+name: Feature request
+about: Suggest an idea for this project
+
+---
+
+**Is your feature request related to a problem? Please describe.**
+A clear and concise description of what the problem is. Ex: I'm always frustrated
+when...
+
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
+
+**Additional context**
+Add any other context or screenshots about the feature request here.
+EOF
+
+          cat > CONTRIBUTING.md <<'EOF'
+# Contributing to ConfigShift
+
+Thanks for your interest! To contribute:
+
+1. Fork the repo and open a branch for your feature/fix.
+2. Run `go test ./...` and add tests for new behavior.
+3. Open a pull request with a clear description of the change.
+
+Please follow the code of conduct and be respectful to maintainers and other
+contributors.
+EOF
+
+          cat > CODE_OF_CONDUCT.md <<'EOF'
+# Contributor Covenant Code of Conduct
+
+We expect all participants to uphold the Contributor Covenant Code of Conduct.
+By participating, you agree to follow this code. Please be kind and respectful.
+
+If you need to report an issue, contact the project maintainers.
+EOF
+
+          cat > .gitignore <<'EOF'
+# ConfigShift
+
+# Environment
+
+# Binaries for local builds
+/bin/
+
+# Vendor
+/vendor/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# JetBrains
+.idea/
+
+# Go specific
+*.out
+EOF
+
+          # logo (one file here; add more if needed)
+          cat > assets/logo/configshift-beaver-full.svg <<'EOF'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ConfigShift beaver mascot">
+  <rect width="100" height="100" rx="14" fill="#FBFDFE"/>
+  <!-- head -->
+  <ellipse cx="50" cy="44" rx="26" ry="22" fill="#C07A47"/>
+  <!-- ear -->
+  <circle cx="34" cy="30" r="4" fill="#A35E33"/>
+  <circle cx="66" cy="30" r="4" fill="#A35E33"/>
+  <!-- eyes -->
+  <circle cx="42" cy="40" r="4" fill="#FFF"/>
+  <circle cx="58" cy="40" r="4" fill="#FFF"/>
+  <circle cx="42" cy="40" r="1.8" fill="#2B2B2B"/>
+  <circle cx="58" cy="40" r="1.8" fill="#2B2B2B"/>
+  <!-- muzzle -->
+  <path d="M38 50 q12 14 24 0" fill="none" stroke="#8A4F2F" stroke-width="2" stroke-linecap="round"/>
+  <!-- big tooth -->
+  <rect x="46" y="54" width="8" height="10" rx="1.5" fill="#FFF"/>
+  <!-- cheeks (subtle) -->
+  <ellipse cx="36" cy="50" rx="3.5" ry="2.2" fill="#AC6E49" opacity="0.9"/>
+  <ellipse cx="64" cy="50" rx="3.5" ry="2.2" fill="#AC6E49" opacity="0.9"/>
+  <!-- front paws & log -->
+  <g transform="translate(0,6)">
+    <path d="M26 58 q10 6 48 0 q-6 8 -48 0 Z" fill="#8C5A36"/>
+    <rect x="22" y="60" width="56" height="10" rx="3" fill="#9E6A43"/>
+    <!-- log rings -->
+    <path d="M28 64 q10 -6 20 0 q10 6 20 0" stroke="#7B4E30" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.9"/>
+  </g>
+  <!-- tail badge (stylized, subtle) -->
+  <path d="M78 64 C86 72 92 86 70 84 C74 74 74 68 78 64 Z" fill="#7B4E30"/>
+</svg>
+EOF
+
+          # git commit & push
+          git add .
+          if git commit -m "scaffold: initial project layout, CLI stub, examples, docs, and beaver mascot asset" ; then
+            git push origin HEAD:main
+          else
+            echo "No changes to commit"
+          fi
