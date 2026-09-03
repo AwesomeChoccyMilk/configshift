@@ -1,14 +1,14 @@
-  - name: Create test file and push to scaffold/init
+  - name: Create scaffold files and push to scaffold/init
+    env:
+      GIT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+      GIT_NAME: github-actions[bot]
     run: |
-      set -e
-      git config user.name "github-actions[bot]"
-      git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      mkdir -p scaffold-test
-      echo "scaffold smoke test" > scaffold-test/README.txt
-      git add .
-      if git commit -m "ci: scaffold smoke test" ; then
-        git push -u origin HEAD:scaffold/init
-        echo "Pushed to branch scaffold/init"
-      else
-        echo "No changes to commit"
-      fi
+      set -euo pipefail
+      git config user.name "${GIT_NAME}"
+      git config user.email "${GIT_EMAIL}"
+
+      # Make directories
+      mkdir -p cmd/configshift pkg/parser pkg/transform examples/compose/simple-app .github/workflows .github/ISSUE_TEMPLATE docs assets/logo
+
+      # LICENSE
+      cat > LICENSE <<'EOF'
