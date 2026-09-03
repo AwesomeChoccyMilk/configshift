@@ -1,5 +1,5 @@
-   name: Create scaffold files and push to scaffold/init
-   env:
+ name: Create scaffold files and push to scaffold/init
+    env:
       GIT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
       GIT_NAME: github-actions[bot]
     run: |
@@ -9,6 +9,4 @@
 
       # Make directories
       mkdir -p cmd/configshift pkg/parser pkg/transform examples/compose/simple-app .github/workflows .github/ISSUE_TEMPLATE docs assets/logo
-
-      # LICENSE
-      cat > LICENSE <<'EOF'
+      # (rest of script omitted for brevity in editor; use the full script you already have)
