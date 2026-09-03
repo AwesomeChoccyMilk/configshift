@@ -1,5 +1,5 @@
    name: Create scaffold files and push to scaffold/init
-    env:
+   env:
       GIT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
       GIT_NAME: github-actions[bot]
     run: |
